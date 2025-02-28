@@ -9,14 +9,13 @@ def load_data():
     X, y = mnist.data, mnist.target.astype(int)  # 确保标签为整数
     return X, y
 
-
 def preprocess_data(X, y):
-    # 先划分数据集，再归一化
+    # 先划分数据集（使用原始标签进行分层）
     X_train, X_val, y_train, y_val = train_test_split(
         X, y,
         test_size=0.2,
         random_state=42,
-        stratify=y  # 保持类别分布
+        stratify=y  # 关键修复：使用原始标签 y，而非 One-hot 编码后的结果
     )
 
     # 归一化（基于训练集参数）
@@ -24,9 +23,7 @@ def preprocess_data(X, y):
     X_train_scaled = scaler.fit_transform(X_train)
     X_val_scaled = scaler.transform(X_val)
 
-    # One-hot编码
-    if y_train.min() < 0 or y_train.max() > 9:
-        raise ValueError("标签值超出范围 [0, 9]")
+    # One-hot编码（划分后再转换）
     y_train_onehot = np.eye(10)[y_train]
     y_val_onehot = np.eye(10)[y_val]
 
