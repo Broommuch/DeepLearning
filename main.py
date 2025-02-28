@@ -28,6 +28,10 @@ if __name__ == "__main__":
 
     # 2. 构建模型
     model = build_model()
+    dummy_input = np.random.randn(32, 784)  # 模拟一个 batch 的数据
+    output = model.forward(dummy_input)
+    print("输出层值范围:", output.min(), output.max())  # 应为概率值 [0,1]
+    print("输出层求和:", np.sum(output[0]))  # 应接近 1.0
 
     # 3. 训练模型（传入验证集）
     loss_history, val_acc_history = train_model(
