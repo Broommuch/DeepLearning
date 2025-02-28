@@ -9,22 +9,22 @@ if __name__ == "__main__":
     X, y = load_data()
     X_train, X_val, y_train, y_val = preprocess_data(X, y)
 
-    # 检查归一化范围
-    print("Pixel 值范围:", X_train.min(), X_train.max())  # 应为 [0.0, 1.0]
-
-    # 检查 One-hot 编码
-    print("y_train[0] 的 One-hot 编码:", y_train[0])  # 应为类似 [0,0,1,...,0]
-    # 统计原始数据、训练集、验证集的类别分布
-    print("原始数据分布:", np.bincount(y) / len(y))
-    print("训练集分布:", np.bincount(np.argmax(y_train, axis=1)) / len(y_train))
-    print("验证集分布:", np.bincount(np.argmax(y_val, axis=1)) / len(y_val))
-
-    # 验证前5个样本的标签与图像是否匹配
-    for i in range(5):
-        plt.imshow(X_train[i].reshape(28, 28), cmap='gray')
-        true_label = np.argmax(y_train[i])  # 从 One-hot 解码
-        plt.title(f"True Label: {true_label}")
-        plt.show()
+    # # 检查归一化范围
+    # print("Pixel 值范围:", X_train.min(), X_train.max())  # 应为 [0.0, 1.0]
+    #
+    # # 检查 One-hot 编码
+    # print("y_train[0] 的 One-hot 编码:", y_train[0])  # 应为类似 [0,0,1,...,0]
+    # # 统计原始数据、训练集、验证集的类别分布
+    # print("原始数据分布:", np.bincount(y) / len(y))
+    # print("训练集分布:", np.bincount(np.argmax(y_train, axis=1)) / len(y_train))
+    # print("验证集分布:", np.bincount(np.argmax(y_val, axis=1)) / len(y_val))
+    #
+    # # 验证前5个样本的标签与图像是否匹配
+    # for i in range(10):
+    #     plt.imshow(X_train[i].reshape(28, 28), cmap='gray')
+    #     true_label = np.argmax(y_train[i])  # 从 One-hot 解码
+    #     plt.title(f"True Label: {true_label}")
+    #     plt.show()
 
     # 2. 构建模型
     model = build_model()
