@@ -14,16 +14,15 @@ if __name__ == "__main__":
     def numerical_gradient(model, X, y):
         eps = 1e-7
         grads_numerical = []
+        original_params = [layer.W.copy() for layer in model.layers]  # 保存原始参数
 
-        # 遍历所有层的参数
-        for layer in model.layers:
-            # 仅处理权重 W（忽略偏置 B）
+        for layer_idx, layer in enumerate(model.layers):
             W_shape = layer.W.shape
             W_flat = layer.W.flatten()
             grad_W = np.zeros_like(W_flat)
 
-            # 对每个权重计算数值梯度
             for i in range(len(W_flat)):
+                # 保存原始值
                 original = W_flat[i]
 
                 # 正向扰动
@@ -40,6 +39,8 @@ if __name__ == "__main__":
                 W_flat[i] = original
                 grad_W[i] = (loss_plus - loss_minus) / (2 * eps)
 
+            # 恢复该层所有参数
+            layer.W = original_params[layer_idx]
             grads_numerical.append(grad_W.reshape(W_shape))
 
         return grads_numerical
@@ -59,6 +60,9 @@ if __name__ == "__main__":
     # 调整梯度顺序
     grads_backprop_reversed = list(reversed(grads_backprop))
 
+    for i, layer in enumerate(model.layers):
+        print(f"Layer {i + 1} 权重形状: {layer.W.shape}")
+
     # 打印梯度形状并计算误差
     for i, (gn, gb) in enumerate(zip(grads_numerical, grads_backprop_reversed)):
         print(f"Layer {i + 1}:")
@@ -66,6 +70,7 @@ if __name__ == "__main__":
         print("  反向传播梯度形状:", gb[0].shape)
         error = np.linalg.norm(gn - gb[0]) / (np.linalg.norm(gn) + np.linalg.norm(gb[0]))
         print(f"  相对误差: {error:.6f}")
+
 
     pass
     #debug utils.py
