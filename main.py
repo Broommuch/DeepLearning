@@ -1,5 +1,5 @@
 from train import build_model, train_model
-from utils import load_data, preprocess_data
+from utils import load_data, preprocess_data,compute_loss
 from visualize import plot_loss_curves, plot_confusion_matrix
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,6 +9,58 @@ if __name__ == "__main__":
     X, y = load_data()
     X_train, X_val, y_train, y_val = preprocess_data(X, y)
 
+
+    # 添加梯度检验代码
+    def numerical_gradient(model, X, y):
+        eps = 1e-7
+        grads_numerical = []
+
+        # 遍历所有参数
+        for layer in model.layers:
+            W_flat = layer.W.flatten()
+            grad_W = np.zeros_like(W_flat)
+
+            # 对每个权重计算数值梯度
+            for i in range(len(W_flat)):
+                original = W_flat[i]
+
+                # 正向扰动
+                W_flat[i] = original + eps
+                layer.W = W_flat.reshape(layer.W.shape)
+                loss_plus = compute_loss(model.forward(X), y)
+
+                # 负向扰动
+                W_flat[i] = original - eps
+                layer.W = W_flat.reshape(layer.W.shape)
+                loss_minus = compute_loss(model.forward(X), y)
+
+                # 恢复原始值
+                W_flat[i] = original
+                grad_W[i] = (loss_plus - loss_minus) / (2 * eps)
+
+            grads_numerical.append(grad_W.reshape(layer.W.shape))
+
+        return grads_numerical
+
+
+    # 比较数值梯度与反向传播梯度
+    X_sample, y_sample = X_train[:10], y_train[:10]
+    model = build_model()
+
+    # 反向传播梯度
+    output = model.forward(X_sample)
+    grads_backprop = model.backward(X_sample, y_sample)
+
+    # 数值梯度
+    grads_numerical = numerical_gradient(model, X_sample, y_sample)
+
+    # 计算相对误差
+    for i, (gn, gb) in enumerate(zip(grads_numerical, grads_backprop)):
+        error = np.linalg.norm(gn - gb[0]) / (np.linalg.norm(gn) + np.linalg.norm(gb[0]))
+        print(f"Layer {i + 1} 梯度相对误差: {error:.6f}")
+
+    pass
+    #debug utils.py
     # # 检查归一化范围
     # print("Pixel 值范围:", X_train.min(), X_train.max())  # 应为 [0.0, 1.0]
     #
@@ -28,10 +80,12 @@ if __name__ == "__main__":
 
     # 2. 构建模型
     model = build_model()
-    dummy_input = np.random.randn(32, 784)  # 模拟一个 batch 的数据
-    output = model.forward(dummy_input)
-    print("输出层值范围:", output.min(), output.max())  # 应为概率值 [0,1]
-    print("输出层求和:", np.sum(output[0]))  # 应接近 1.0
+
+    # debug model.py
+    # dummy_input = np.random.randn(32, 784)  # 模拟一个 batch 的数据
+    # output = model.forward(dummy_input)
+    # print("输出层值范围:", output.min(), output.max())  # 应为概率值 [0,1]
+    # print("输出层求和:", np.sum(output[0]))  # 应接近 1.0
 
     # 3. 训练模型（传入验证集）
     loss_history, val_acc_history = train_model(
