@@ -10,7 +10,6 @@ def train_model(model, X_train, y_train, X_val, y_val,
 
     for epoch in range(epochs):
         epoch_loss = 0.0
-        # Mini-batch遍历
         for i in range(0, len(X_train), batch_size):
             X_batch = X_train[i:i + batch_size]
             y_batch = y_train[i:i + batch_size]
@@ -18,25 +17,28 @@ def train_model(model, X_train, y_train, X_val, y_val,
             # 前向传播
             y_pred = model.forward(X_batch)
 
-            # 计算损失（交叉熵）
+            # 计算损失
             loss = compute_loss(y_pred, y_batch, loss_type='cross_entropy')
             epoch_loss += loss
 
-            # 反向传播
-            grads = model.backward(X_batch, y_batch)
+            # 手动计算交叉熵梯度（softmax输出层专用）
+            grad = (y_pred - y_batch) / y_batch.shape[0]
 
-            # 参数更新（逐层更新）
+            # 反向传播
+            grads = model.backward(X_batch, grad)
+
+            # 参数更新
             for layer, (dw, db) in zip(model.layers, reversed(grads)):
                 layer.W -= learning_rate * dw
                 layer.B -= learning_rate * db
 
-        # 记录平均损失
+        # 记录损失和验证集准确率
         avg_loss = epoch_loss / (len(X_train) // batch_size)
         loss_history.append(avg_loss)
 
         # 验证集评估
         val_pred = model.forward(X_val)
-        val_pred_probs = np.exp(val_pred) / np.sum(np.exp(val_pred), axis=1, keepdims=True)
+        val_pred_probs = val_pred  # 输出层已用softmax，直接取概率
         val_acc = np.mean(np.argmax(y_val, axis=1) == np.argmax(val_pred_probs, axis=1))
         val_acc_history.append(val_acc)
 

@@ -25,6 +25,11 @@ class FullyConnectedLayer(Layer):
             return lambda x: 1 / (1 + np.exp(-x))
         elif name == 'tanh':
             return np.tanh
+        elif name == 'softmax':
+            def softmax(x):
+                exp_x = np.exp(x - np.max(x, axis=1, keepdims=True))  # 防止数值溢出
+                return exp_x / np.sum(exp_x, axis=1, keepdims=True)
+            return softmax
         else:
             raise ValueError("Invalid activation function")
 
@@ -35,6 +40,9 @@ class FullyConnectedLayer(Layer):
             return lambda x: x * (1 - x)
         elif name == 'tanh':
             return lambda x: 1 - np.square(x)
+        elif name == 'softmax':
+            # 注意：实际梯度在交叉熵损失中已计算，此处返回1以占位
+            return lambda x: 1  # 占位符，实际梯度在损失函数中处理
         else:
             raise ValueError("Invalid activation derivative")
 
