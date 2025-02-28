@@ -1,6 +1,7 @@
 from utils import load_data, preprocess_data
 import matplotlib.pyplot as plt
-
+from model import NeuralNetwork
+from utils import load_data, compute_loss
 
 def train_model(model, X_train, y_train, X_val, y_val, epochs=50, batch_size=64):
     loss_history = []
@@ -36,3 +37,9 @@ def train_model(model, X_train, y_train, X_val, y_val, epochs=50, batch_size=64)
         print(f"Epoch {epoch + 1}/{epochs}, Val Acc: {val_acc:.4f}")
 
     return loss_history, val_acc_history
+
+def build_model():
+    model = NeuralNetwork()
+    model.add_layer(FullyConnectedLayer(784, 256))
+    model.add_layer(ReLU())
+    return model

@@ -1,15 +1,12 @@
 import numpy as np
 
-
 class Layer:
     """基础层抽象类"""
-
     def forward(self, x):
         raise NotImplementedError
 
     def backward(self, x, grad):
         raise NotImplementedError
-
 
 class FullyConnectedLayer(Layer):
     def __init__(self, n_in, n_out, activation='relu', l2_lambda=0):
@@ -42,22 +39,16 @@ class FullyConnectedLayer(Layer):
             raise ValueError("Invalid activation derivative")
 
     def forward(self, x):
-        self.z = np.dot(x, self.W.T) + self.B
+        self.z = np.dot(x, self.W) + self.B
         self.a = self.activation(self.z)
         return self.a
 
     def backward(self, x, grad):
-        # 反向传播梯度计算
-        d_z = grad * self.activation_deriv(self.z)
-
-        # 参数梯度（含L2正则化）
-        dW = np.dot(x.T, d_z) + 2 * self.l2_lambda * self.W
+        d_z = grad * self.activation_deriv(self.a)  # 使用 self.a 而非 self.z
+        dW = np.dot(x.T, d_z) + self.l2_lambda * self.W  # 修正正则化系数
         dB = np.sum(d_z, axis=0, keepdims=True)
-
-        # 输入梯度
-        dx = np.dot(d_z, self.W)
+        dx = np.dot(d_z, self.W.T)  # 修正维度
         return dx, dW, dB
-
 
 class NeuralNetwork:
     def __init__(self):
@@ -72,12 +63,14 @@ class NeuralNetwork:
         return x
 
     def backward(self, x, y_true):
+        # 计算初始梯度（假设使用交叉熵损失）
+        predictions = self.forward(x)
+        epsilon = 1e-15
+        predictions = np.clip(predictions, epsilon, 1 - epsilon)
+        grad = (predictions - y_true) / y_true.shape[0]
+
         grads = []
-        dx = cross_entropy_loss(y_true, x)
-
         for layer in reversed(self.layers):
-            dx, dw, db = layer.backward(x, dx)
+            grad, dw, db = layer.backward(grad)
             grads.append((dw, db))
-            x = layer.z  # 回溯到前一层输入
-
         return grads

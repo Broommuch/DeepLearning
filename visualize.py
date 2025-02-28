@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+
 def plot_loss_curves(loss_history, val_acc_history):
     plt.figure(figsize=(12, 4))
     plt.subplot(1, 2, 1)
