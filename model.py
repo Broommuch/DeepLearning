@@ -1,12 +1,13 @@
 import numpy as np
 
+
 class Layer:
-    """基础层抽象类"""
     def forward(self, x):
         raise NotImplementedError
 
     def backward(self, x, grad):
         raise NotImplementedError
+
 
 class FullyConnectedLayer(Layer):
     def __init__(self, n_in, n_out, activation='relu', l2_lambda=0):
@@ -27,8 +28,9 @@ class FullyConnectedLayer(Layer):
             return np.tanh
         elif name == 'softmax':
             def softmax(x):
-                exp_x = np.exp(x - np.max(x, axis=1, keepdims=True))  # 防止数值溢出
+                exp_x = np.exp(x - np.max(x, axis=1, keepdims=True))
                 return exp_x / np.sum(exp_x, axis=1, keepdims=True)
+
             return softmax
         else:
             raise ValueError("Invalid activation function")
@@ -41,8 +43,7 @@ class FullyConnectedLayer(Layer):
         elif name == 'tanh':
             return lambda x: 1 - np.square(x)
         elif name == 'softmax':
-            # 注意：实际梯度在交叉熵损失中已计算，此处返回1以占位
-            return lambda x: 1  # 占位符，实际梯度在损失函数中处理
+            return lambda x: 1  # 占位符
         else:
             raise ValueError("Invalid activation derivative")
 
@@ -52,11 +53,17 @@ class FullyConnectedLayer(Layer):
         return self.a
 
     def backward(self, x, grad):
-        d_z = grad * self.activation_deriv(self.a)  # 使用 self.a 而非 self.z
-        dW = np.dot(x.T, d_z) + self.l2_lambda * self.W  # 修正正则化系数
+        # 计算激活函数导数（基于激活后的值 a）
+        d_z = grad * self.activation_deriv(self.a)
+
+        # 参数梯度（含L2正则化）
+        dW = np.dot(x.T, d_z) + self.l2_lambda * self.W
         dB = np.sum(d_z, axis=0, keepdims=True)
-        dx = np.dot(d_z, self.W.T)  # 修正维度
+
+        # 输入梯度
+        dx = np.dot(d_z, self.W.T)
         return dx, dW, dB
+
 
 class NeuralNetwork:
     def __init__(self):
@@ -66,19 +73,25 @@ class NeuralNetwork:
         self.layers.append(layer)
 
     def forward(self, x):
+        self.layer_outputs = [x]  # 保存各层输入
         for layer in self.layers:
             x = layer.forward(x)
+            self.layer_outputs.append(x)
         return x
 
     def backward(self, x, y_true):
-        # 计算初始梯度（假设使用交叉熵损失）
+        # 前向传播以记录各层输入
         predictions = self.forward(x)
+
+        # 计算初始梯度（交叉熵损失 + softmax）
         epsilon = 1e-15
         predictions = np.clip(predictions, epsilon, 1 - epsilon)
         grad = (predictions - y_true) / y_true.shape[0]
 
         grads = []
-        for layer in reversed(self.layers):
-            grad, dw, db = layer.backward(grad)
+        # 反向遍历各层及其输入
+        for layer, layer_input in zip(reversed(self.layers), reversed(self.layer_outputs[:-1])):
+            grad, dw, db = layer.backward(layer_input, grad)
             grads.append((dw, db))
+
         return grads
