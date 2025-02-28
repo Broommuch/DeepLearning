@@ -47,9 +47,14 @@ def train_model(model, X_train, y_train, X_val, y_val,
     return loss_history, val_acc_history
 
 def build_model():
+    # model = NeuralNetwork()
+    # # 第一层：输入 784，输出 256
+    # model.add_layer(FullyConnectedLayer(784, 256, activation='relu'))
+    # # 第二层：输入 256，输出 10
+    # model.add_layer(FullyConnectedLayer(256, 10, activation='softmax'))
+    # return model
+
+    # 验证单层网络
     model = NeuralNetwork()
-    # 第一层：输入 784，输出 256
-    model.add_layer(FullyConnectedLayer(784, 256, activation='relu'))
-    # 第二层：输入 256，输出 10
-    model.add_layer(FullyConnectedLayer(256, 10, activation='softmax'))
+    model.add_layer(FullyConnectedLayer(784, 10, activation='softmax'))
     return model

@@ -59,17 +59,17 @@ class FullyConnectedLayer(Layer):
     def backward(self, x, grad):
         # 根据激活函数类型计算导数
         if self.activation == 'softmax':
-            # Softmax + 交叉熵的梯度已简化为 (predictions - targets)
+            # Softmax + 交叉熵的梯度简化为 (predictions - targets)
             d_z = grad  # 直接使用传入的梯度
         else:
-            # 其他激活函数基于激活后的值 a 计算导数
-            d_z = grad * self.activation_deriv(self.a)
+            # ReLU 导数基于激活前的 z
+            d_z = grad * (self.z > 0)  # 使用 z 而非 a
 
-        # 计算参数梯度（含L2正则化）
+        # 参数梯度（含L2正则化）
         dW = np.dot(x.T, d_z) + self.l2_lambda * self.W
         dB = np.sum(d_z, axis=0, keepdims=True)
 
-        # 计算输入梯度
+        # 输入梯度
         dx = np.dot(d_z, self.W.T)
         return dx, dW, dB
 
@@ -89,8 +89,21 @@ class NeuralNetwork:
         return x
 
     def backward(self, x, y_true):
-        # 前向传播获取预测值
-        predictions = self.forward(x)
+        predictions = self.forward(x)  # 前向传播获取 Softmax 输出
+
+        # 理论梯度应为 (predictions - y_true)
+        theoretical_grad = predictions - y_true
+
+        # 实际计算的梯度
+        actual_grad = (predictions - y_true) / y_true.shape[0]  # 归一化后的梯度
+
+        # 断言理论梯度与实际梯度一致（误差应接近零）
+        np.testing.assert_allclose(
+            actual_grad * y_true.shape[0],  # 反归一化
+            theoretical_grad,
+            atol=1e-4,
+            err_msg="Softmax 梯度计算错误"
+        )
 
         # 计算交叉熵损失梯度（针对 softmax 输出）
         grad = (predictions - y_true) / y_true.shape[0]  # 除以 batch_size

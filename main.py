@@ -22,7 +22,6 @@ if __name__ == "__main__":
             grad_W = np.zeros_like(W_flat)
 
             for i in range(len(W_flat)):
-                # 保存原始值
                 original = W_flat[i]
 
                 # 正向扰动
@@ -39,11 +38,24 @@ if __name__ == "__main__":
                 W_flat[i] = original
                 grad_W[i] = (loss_plus - loss_minus) / (2 * eps)
 
-            # 恢复该层所有参数
+            # 恢复该层参数
             layer.W = original_params[layer_idx]
             grads_numerical.append(grad_W.reshape(W_shape))
 
         return grads_numerical
+
+
+    # 运行梯度检查，简单单层网络时的情况
+    X_sample, y_sample = X_train[:2], y_train[:2]  # 极小 batch
+    model = build_model()
+    output = model.forward(X_sample)
+    grads_backprop = model.backward(X_sample, y_sample)
+    grads_numerical = numerical_gradient(model, X_sample, y_sample)
+
+    # 比较梯度
+    for i, (gn, gb) in enumerate(zip(grads_numerical, reversed(grads_backprop))):
+        error = np.linalg.norm(gn - gb[0]) / (np.linalg.norm(gn) + np.linalg.norm(gb[0]))
+        print(f"Layer {i + 1} 梯度相对误差: {error:.6f}")
 
 
     # 比较数值梯度与反向传播梯度

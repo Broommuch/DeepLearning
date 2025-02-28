@@ -40,17 +40,11 @@ def compute_loss(predictions, targets, loss_type='cross_entropy', regularization
         loss_type: 损失类型，支持 'cross_entropy' 或 'mse'
     """
     if loss_type == 'cross_entropy':
-        # 交叉熵损失（已适配你的模型输出为 logits）
-        epsilon = 1e-15
-        predictions = np.clip(predictions, epsilon, 1 - epsilon)
-        loss = -np.mean(targets * np.log(predictions))
-
-    elif loss_type == 'mse':
-        # 均方误差
-        loss = np.mean((predictions - targets) ** 2)
-
+        # 添加 Softmax 数值稳定性处理
+        max_vals = np.max(predictions, axis=1, keepdims=True)
+        stable_preds = predictions - max_vals
+        softmax_probs = np.exp(stable_preds) / np.sum(np.exp(stable_preds), axis=1, keepdims=True)
+        loss = -np.mean(targets * np.log(softmax_probs + 1e-15))
+        return loss
     else:
-        raise ValueError(f"不支持的损失类型: {loss_type}")
-
-    # 正则化（此处假设模型权重在反向传播中处理，故省略）
-    return loss
+        raise ValueError("Unsupported loss type")
