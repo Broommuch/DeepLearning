@@ -2,7 +2,7 @@ import numpy as np
 from sklearn.datasets import fetch_openml
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
-
+import matplotlib.pyplot as plt
 
 
 # 数据预处理
@@ -95,54 +95,90 @@ class NeuralNetwork:
         self.b2 -= lr * db2
 
 
-# 训练函数
+# 修改后的训练函数（添加历史记录）
 def train(model, X_train, y_train, X_val, y_val, epochs=20, lr=0.01, batch_size=64):
+    history = {
+        'train_loss': [],
+        'val_loss': [],
+        'val_acc': []
+    }
+
     for epoch in range(epochs):
-        # Mini-batch训练
+        # 训练阶段
+        epoch_train_loss = 0
         permutation = np.random.permutation(X_train.shape[0])
         for i in range(0, X_train.shape[0], batch_size):
             indices = permutation[i:i + batch_size]
             X_batch = X_train[indices]
             y_batch = y_train[indices]
 
-            # 前向传播
+            # 前向传播并计算损失
             output = model.forward(X_batch)
+            batch_loss = model.compute_loss(output, y_batch)
+            epoch_train_loss += batch_loss * X_batch.shape[0]
 
             # 反向传播
             model.backward(X_batch, y_batch, lr)
 
-        # 验证集评估
+        # 记录训练损失
+        history['train_loss'].append(epoch_train_loss / X_train.shape[0])
+
+        # 验证阶段
         val_output = model.forward(X_val)
+        val_loss = model.compute_loss(val_output, y_val)
         val_acc = np.mean(np.argmax(val_output, axis=1) == np.argmax(y_val, axis=1))
-        loss = model.compute_loss(val_output, y_val)
-        print(f"Epoch {epoch + 1}/{epochs}, Loss: {loss:.4f}, Val Acc: {val_acc:.4f}")
+
+        history['val_loss'].append(val_loss)
+        history['val_acc'].append(val_acc)
+
+        print(f"Epoch {epoch + 1}/{epochs} | "
+              f"Train Loss: {history['train_loss'][-1]:.4f} | "
+              f"Val Loss: {val_loss:.4f} | "
+              f"Val Acc: {val_acc:.4f}")
+
+    return history
 
 
-# 主程序
+def visualize_history(history):
+    plt.figure(figsize=(12, 5))
+
+    # 损失函数变化趋势
+    plt.subplot(1, 2, 1)
+    plt.plot(history['train_loss'], label='Train Loss')
+    plt.plot(history['val_loss'], label='Val Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Training and Validation Loss')
+    plt.legend()
+    plt.grid(True)
+
+    # 准确率变化趋势
+    plt.subplot(1, 2, 2)
+    plt.plot(history['val_acc'], 'g-', label='Validation Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.title('Validation Accuracy Progress')
+    plt.legend()
+    plt.grid(True)
+
+    plt.tight_layout()
+    plt.savefig('training_metrics.png')
+    plt.show()
+
+
+# 修改后的主程序
 if __name__ == "__main__":
     X_train, X_val, y_train, y_val = load_data()
 
-    # 创建双层网络（784 → 256 → 10），可自由选择激活函数
     model = NeuralNetwork(
         input_size=784,
         hidden_size=256,
         output_size=10,
-        activation='relu'  # 可替换为sigmoid或tanh
+        activation='relu'
     )
 
-    # 训练参数
-    train(
-        model,
-        X_train,
-        y_train,
-        X_val,
-        y_val,
-        epochs=20,
-        lr=0.01,
-        batch_size=64
-    )
+    # 训练并获取历史数据
+    history = train(model, X_train, y_train, X_val, y_val)
 
-    # 最终验证集准确率
-    final_output = model.forward(X_val)
-    final_acc = np.mean(np.argmax(final_output, axis=1) == np.argmax(y_val, axis=1))
-    print(f"\nFinal Validation Accuracy: {final_acc:.4f}")
+    # 可视化训练过程
+    visualize_history(history)
