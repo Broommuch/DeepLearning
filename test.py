@@ -22,73 +22,76 @@ def load_data():
     return X_train, X_val, y_train, y_val
 
 
-# 神经网络类
 class NeuralNetwork:
-    def __init__(self, input_size, hidden_sizes, output_size, l2_lambda=1e-4):
-        self.layers = []
-        prev_size = input_size
-
-        # 初始化各层参数
-        for size in hidden_sizes:
-            self.layers.append({
-                'W': np.random.randn(prev_size, size) * np.sqrt(2. / prev_size),
-                'b': np.zeros((1, size))
-            })
-            prev_size = size
-
-        # 输出层
-        self.layers.append({
-            'W': np.random.randn(prev_size, output_size) * np.sqrt(2. / prev_size),
-            'b': np.zeros((1, output_size))
-        })
+    def __init__(self, input_size, hidden_size, output_size,
+                 activation='relu', l2_lambda=1e-4):
+        # 初始化参数（双层结构）
+        self.W1 = np.random.randn(input_size, hidden_size) * np.sqrt(2. / input_size)
+        self.b1 = np.zeros((1, hidden_size))
+        self.W2 = np.random.randn(hidden_size, output_size) * np.sqrt(2. / hidden_size)
+        self.b2 = np.zeros((1, output_size))
+        self.activation = activation
         self.l2_lambda = l2_lambda
 
-    def relu(self, Z):
-        return np.maximum(0, Z)
+    # 激活函数全家桶
+    def _activation(self, Z, type):
+        if type == 'relu':
+            return np.maximum(0, Z)
+        elif type == 'sigmoid':
+            return 1 / (1 + np.exp(-Z))
+        elif type == 'tanh':
+            return np.tanh(Z)
+        return Z
 
-    def relu_deriv(self, Z):
-        return Z > 0
+    def _activation_deriv(self, Z, type):
+        if type == 'relu':
+            return (Z > 0).astype(float)
+        elif type == 'sigmoid':
+            s = self._activation(Z, 'sigmoid')
+            return s * (1 - s)
+        elif type == 'tanh':
+            return 1 - np.tanh(Z) ** 2
+        return np.ones_like(Z)
 
     def softmax(self, Z):
         exps = np.exp(Z - np.max(Z, axis=1, keepdims=True))
         return exps / np.sum(exps, axis=1, keepdims=True)
 
     def forward(self, X):
-        self.cache = [{'A': X}]
-        for i, layer in enumerate(self.layers):
-            Z = np.dot(self.cache[-1]['A'], layer['W']) + layer['b']
-            if i == len(self.layers) - 1:
-                A = self.softmax(Z)
-            else:
-                A = self.relu(Z)
-            self.cache.append({'Z': Z, 'A': A})
-        return A
+        # 第一层
+        self.Z1 = np.dot(X, self.W1) + self.b1
+        self.A1 = self._activation(self.Z1, self.activation)
+
+        # 输出层
+        self.Z2 = np.dot(self.A1, self.W2) + self.b2
+        return self.softmax(self.Z2)
 
     def compute_loss(self, y_pred, y_true):
         m = y_true.shape[0]
         corect_logprobs = -np.log(y_pred[range(m), y_true.argmax(axis=1)])
         data_loss = np.sum(corect_logprobs) / m
-        reg_loss = 0.5 * self.l2_lambda * sum(np.sum(layer['W'] ** 2) for layer in self.layers)
+        reg_loss = 0.5 * self.l2_lambda * (np.sum(self.W1 ** 2) + np.sum(self.W2 ** 2))
         return data_loss + reg_loss
 
-    def backward(self, X, y, learning_rate):
+    def backward(self, X, y, lr):
         m = X.shape[0]
-        grads = []
 
         # 输出层梯度
-        dZ = self.cache[-1]['A'] - y
-        for l in reversed(range(len(self.layers))):
-            dW = np.dot(self.cache[l]['A'].T, dZ) / m + self.l2_lambda * self.layers[l]['W']
-            db = np.sum(dZ, axis=0, keepdims=True) / m
-            if l > 0:
-                dA = np.dot(dZ, self.layers[l]['W'].T)
-                dZ = dA * self.relu_deriv(self.cache[l]['Z'])
-            grads.insert(0, {'dW': dW, 'db': db})
+        dZ2 = self.softmax(self.Z2) - y
+        dW2 = np.dot(self.A1.T, dZ2) / m + self.l2_lambda * self.W2
+        db2 = np.sum(dZ2, axis=0, keepdims=True) / m
 
-        # 更新参数
-        for l in range(len(self.layers)):
-            self.layers[l]['W'] -= learning_rate * grads[l]['dW']
-            self.layers[l]['b'] -= learning_rate * grads[l]['db']
+        # 隐藏层梯度
+        dA1 = np.dot(dZ2, self.W2.T)
+        dZ1 = dA1 * self._activation_deriv(self.Z1, self.activation)
+        dW1 = np.dot(X.T, dZ1) / m + self.l2_lambda * self.W1
+        db1 = np.sum(dZ1, axis=0, keepdims=True) / m
+
+        # 参数更新
+        self.W1 -= lr * dW1
+        self.b1 -= lr * db1
+        self.W2 -= lr * dW2
+        self.b2 -= lr * db2
 
 
 # 训练函数
@@ -118,12 +121,12 @@ def train(model, X_train, y_train, X_val, y_val, epochs=20, lr=0.01, batch_size=
 if __name__ == "__main__":
     X_train, X_val, y_train, y_val = load_data()
 
-    # 创建模型 (输入784, 隐藏层[256,128], 输出10)
+    # 创建双层网络（784 → 256 → 10），可自由选择激活函数
     model = NeuralNetwork(
         input_size=784,
-        hidden_sizes=[256, 128],
+        hidden_size=256,
         output_size=10,
-        l2_lambda=1e-4
+        activation='relu'  # 可替换为sigmoid或tanh
     )
 
     # 训练参数
