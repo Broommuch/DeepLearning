@@ -40,15 +40,25 @@ class FullyConnectedLayer(Layer):
         if name == 'relu':
             return lambda x: np.where(x > 0, 1, 0)
         elif name == 'sigmoid':
-            return lambda x: x * (1 - x)
+            sigmoid = lambda x: 1 / (1 + np.exp(-x))
+            return lambda x: sigmoid(x) * (1 - sigmoid(x))  # 使用激活值来计算导数
         elif name == 'tanh':
-            return lambda x: 1 - np.square(x)
+            return lambda x: 1 - np.square(np.tanh(x))  # 使用激活值来计算导数
         elif name == 'softmax':
             # Softmax 的导数在交叉熵损失中已简化为 (predictions - targets)
-            # 此处返回 1，表示梯度直接传递（实际计算中已通过损失函数处理）
-            return lambda x: 1
+            # 此处返回一个函数，表示梯度直接传递（实际计算中已通过损失函数处理）
+            def softmax_grad(x):
+                s = self.activation(x)
+                batch_size = x.shape[0]
+                grad = np.zeros((batch_size, x.shape[1], x.shape[1]))
+                for i in range(batch_size):
+                    s_i = s[i]
+                    grad[i] = np.diag(s_i) - np.outer(s_i, s_i)
+                return grad
+
+            return softmax_grad
         else:
-            raise ValueError("Invalid activation derivative")
+            raise ValueError(f"Invalid activation derivative: {name}")
 
     def forward(self, x):
         # 矩阵乘法 x.dot(W) 形状应为 (batch_size, n_out)
