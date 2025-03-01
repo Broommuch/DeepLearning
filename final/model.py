@@ -1,25 +1,4 @@
 import numpy as np
-from sklearn.datasets import fetch_openml
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
-
-
-# 数据预处理
-def load_data():
-    mnist = fetch_openml('mnist_784', version=1, parser='auto')
-    X, y = mnist.data.to_numpy(), mnist.target.astype(int).to_numpy()
-
-    # 归一化
-    scaler = MinMaxScaler()
-    X = scaler.fit_transform(X)
-
-    # One-hot编码
-    onehot = OneHotEncoder(sparse_output=False)
-    y = onehot.fit_transform(y.reshape(-1, 1))
-
-    # 划分训练验证集
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
-    return X_train, X_val, y_train, y_val
 
 
 class NeuralNetwork:
@@ -92,56 +71,3 @@ class NeuralNetwork:
         self.b1 -= lr * db1
         self.W2 -= lr * dW2
         self.b2 -= lr * db2
-
-
-# 训练函数
-def train(model, X_train, y_train, X_val, y_val, epochs=20, lr=0.01, batch_size=64):
-    for epoch in range(epochs):
-        # Mini-batch训练
-        permutation = np.random.permutation(X_train.shape[0])
-        for i in range(0, X_train.shape[0], batch_size):
-            indices = permutation[i:i + batch_size]
-            X_batch = X_train[indices]
-            y_batch = y_train[indices]
-
-            # 前向传播
-            output = model.forward(X_batch)
-
-            # 反向传播
-            model.backward(X_batch, y_batch, lr)
-
-        # 验证集评估
-        val_output = model.forward(X_val)
-        val_acc = np.mean(np.argmax(val_output, axis=1) == np.argmax(y_val, axis=1))
-        loss = model.compute_loss(val_output, y_val)
-        print(f"Epoch {epoch + 1}/{epochs}, Loss: {loss:.4f}, Val Acc: {val_acc:.4f}")
-
-
-# 主程序
-if __name__ == "__main__":
-    X_train, X_val, y_train, y_val = load_data()
-
-    # 创建双层网络（784 → 256 → 10），可自由选择激活函数
-    model = NeuralNetwork(
-        input_size=784,
-        hidden_size=256,
-        output_size=10,
-        activation='relu'  # 可替换为sigmoid或tanh
-    )
-
-    # 训练参数
-    train(
-        model,
-        X_train,
-        y_train,
-        X_val,
-        y_val,
-        epochs=20,
-        lr=0.01,
-        batch_size=64
-    )
-
-    # 最终验证集准确率
-    final_output = model.forward(X_val)
-    final_acc = np.mean(np.argmax(final_output, axis=1) == np.argmax(y_val, axis=1))
-    print(f"\nFinal Validation Accuracy: {final_acc:.4f}")
