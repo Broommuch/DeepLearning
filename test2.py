@@ -31,7 +31,6 @@ class NeuralNetwork:
                  learning_rate=0.01, batch_size=64):
         # 网络参数
         self.layer_dims = [input_size] + hidden_sizes + [output_size]
-        self.activation = activation
         self.l2_lambda = l2_lambda
         self.learning_rate = learning_rate
         self.batch_size = batch_size
@@ -65,11 +64,12 @@ class NeuralNetwork:
         # 前向传播所有隐藏层
         for i in range(len(self.weights) - 1):
             Z = np.dot(A, self.weights[i]) + self.biases[i]
-            self.caches.append((A.copy(), Z.copy()))  # 保存输入和线性输出
+            self.caches.append((A.copy(), Z.copy()))
             A = self.relu(Z)
 
-        # 输出层
+        # 输出层前保存最后的激活输出
         Z = np.dot(A, self.weights[-1]) + self.biases[-1]
+        self.caches.append((A.copy(), Z.copy()))
         return self.softmax(Z)
 
     def compute_loss(self, y_pred, y_true):
@@ -89,24 +89,23 @@ class NeuralNetwork:
         grads = []
 
         # 输出层梯度
-        dZ = self.forward(X) - y
+        dZ = self.forward(X) - y  # 确保使用最新缓存
 
         # 反向传播所有层
         for i in reversed(range(len(self.weights))):
-            if i == len(self.weights) - 1:  # 输出层前一层
-                A_prev = self.relu(np.dot(self.caches[-1][0], self.weights[-2]) + self.biases[-2])
-            elif i > 0:
-                A_prev = self.caches[i - 1][0]
-            else:
-                A_prev = X
+            # 获取正确的A_prev
+            A_prev, _ = self.caches[i]
 
+            # 计算梯度
             dW = np.dot(A_prev.T, dZ) / m + self.l2_lambda * self.weights[i]
             db = np.sum(dZ, axis=0, keepdims=True) / m
             grads.insert(0, (dW, db))
 
+            # 计算前一层梯度（除输入层外）
             if i > 0:
                 dA_prev = np.dot(dZ, self.weights[i].T)
-                dZ = dA_prev * self.relu_deriv(self.caches[i - 1][1])
+                _, Z_prev = self.caches[i - 1]
+                dZ = dA_prev * self.relu_deriv(Z_prev)
 
         # 更新参数
         for i in range(len(self.weights)):
@@ -227,12 +226,11 @@ if __name__ == "__main__":
     # 加载数据
     X_train, X_val, y_train, y_val = load_data()
 
-    # 模型配置（可自由修改以下参数）
+    # 模型配置示例（可自由修改）
     config = {
         'input_size': 784,
-        'hidden_sizes': [128],  # 可改为[512,256], [128]等
+        'hidden_sizes': [256, 128],  # 支持任意结构如[512, 256], [128]等
         'output_size': 10,
-        'activation': 'relu',
         'l2_lambda': 1e-4,
         'learning_rate': 0.01,
         'batch_size': 64
