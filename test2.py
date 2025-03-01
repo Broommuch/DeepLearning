@@ -26,14 +26,27 @@ def load_data():
 
 # 神经网络类
 class NeuralNetwork:
-    def __init__(self, input_size, hidden_size, output_size,
-                 activation='relu', l2_lambda=1e-4):
-        # 初始化参数
-        self.W1 = np.random.randn(input_size, hidden_size) * np.sqrt(2. / input_size)
-        self.b1 = np.zeros((1, hidden_size))
-        self.W2 = np.random.randn(hidden_size, output_size) * np.sqrt(2. / hidden_size)
-        self.b2 = np.zeros((1, output_size))
+    def __init__(self, input_size, hidden_sizes, output_size,
+                 activation='relu', l2_lambda=1e-4,
+                 learning_rate=0.01, batch_size=64):
+        # 网络参数
+        self.layer_dims = [input_size] + hidden_sizes + [output_size]
+        self.activation = activation
         self.l2_lambda = l2_lambda
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+
+        # 初始化参数
+        self.weights = []
+        self.biases = []
+        for i in range(len(self.layer_dims) - 1):
+            # He初始化
+            scale = np.sqrt(2.0 / self.layer_dims[i])
+            self.weights.append(np.random.randn(self.layer_dims[i], self.layer_dims[i + 1]) * scale)
+            self.biases.append(np.zeros((1, self.layer_dims[i + 1])))
+
+        # 缓存中间结果
+        self.caches = []
 
     def relu(self, Z):
         return np.maximum(0, Z)
@@ -46,44 +59,63 @@ class NeuralNetwork:
         return exps / np.sum(exps, axis=1, keepdims=True)
 
     def forward(self, X):
-        # 第一层
-        self.Z1 = np.dot(X, self.W1) + self.b1
-        self.A1 = self.relu(self.Z1)
+        self.caches = []
+        A = X
+
+        # 前向传播所有隐藏层
+        for i in range(len(self.weights) - 1):
+            Z = np.dot(A, self.weights[i]) + self.biases[i]
+            self.caches.append((A.copy(), Z.copy()))  # 保存输入和线性输出
+            A = self.relu(Z)
 
         # 输出层
-        self.Z2 = np.dot(self.A1, self.W2) + self.b2
-        return self.softmax(self.Z2)
+        Z = np.dot(A, self.weights[-1]) + self.biases[-1]
+        return self.softmax(Z)
 
     def compute_loss(self, y_pred, y_true):
         m = y_true.shape[0]
         corect_logprobs = -np.log(y_pred[range(m), y_true.argmax(axis=1)])
         data_loss = np.sum(corect_logprobs) / m
-        reg_loss = 0.5 * self.l2_lambda * (np.sum(self.W1 ** 2) + np.sum(self.W2 ** 2))
+
+        # L2正则化项
+        reg_loss = 0
+        for W in self.weights:
+            reg_loss += 0.5 * self.l2_lambda * np.sum(W ** 2)
+
         return data_loss + reg_loss
 
-    def backward(self, X, y, learning_rate):
+    def backward(self, X, y):
         m = X.shape[0]
+        grads = []
 
         # 输出层梯度
-        dZ2 = self.softmax(self.Z2) - y
-        dW2 = np.dot(self.A1.T, dZ2) / m + self.l2_lambda * self.W2
-        db2 = np.sum(dZ2, axis=0, keepdims=True) / m
+        dZ = self.forward(X) - y
 
-        # 隐藏层梯度
-        dA1 = np.dot(dZ2, self.W2.T)
-        dZ1 = dA1 * self.relu_deriv(self.Z1)
-        dW1 = np.dot(X.T, dZ1) / m + self.l2_lambda * self.W1
-        db1 = np.sum(dZ1, axis=0, keepdims=True) / m
+        # 反向传播所有层
+        for i in reversed(range(len(self.weights))):
+            if i == len(self.weights) - 1:  # 输出层前一层
+                A_prev = self.relu(np.dot(self.caches[-1][0], self.weights[-2]) + self.biases[-2])
+            elif i > 0:
+                A_prev = self.caches[i - 1][0]
+            else:
+                A_prev = X
 
-        # 参数更新
-        self.W1 -= learning_rate * dW1
-        self.b1 -= learning_rate * db1
-        self.W2 -= learning_rate * dW2
-        self.b2 -= learning_rate * db2
+            dW = np.dot(A_prev.T, dZ) / m + self.l2_lambda * self.weights[i]
+            db = np.sum(dZ, axis=0, keepdims=True) / m
+            grads.insert(0, (dW, db))
+
+            if i > 0:
+                dA_prev = np.dot(dZ, self.weights[i].T)
+                dZ = dA_prev * self.relu_deriv(self.caches[i - 1][1])
+
+        # 更新参数
+        for i in range(len(self.weights)):
+            self.weights[i] -= self.learning_rate * grads[i][0]
+            self.biases[i] -= self.learning_rate * grads[i][1]
 
 
 # 训练函数
-def train(model, X_train, y_train, X_val, y_val, epochs=20, lr=0.01, batch_size=64):
+def train(model, X_train, y_train, X_val, y_val, epochs=20):
     history = {
         'train_loss': [],
         'val_loss': [],
@@ -92,20 +124,26 @@ def train(model, X_train, y_train, X_val, y_val, epochs=20, lr=0.01, batch_size=
 
     for epoch in range(epochs):
         epoch_loss = 0
+
+        # Mini-batch训练
         permutation = np.random.permutation(X_train.shape[0])
-        for i in range(0, X_train.shape[0], batch_size):
-            indices = permutation[i:i + batch_size]
+        for i in range(0, X_train.shape[0], model.batch_size):
+            indices = permutation[i:i + model.batch_size]
             X_batch = X_train[indices]
             y_batch = y_train[indices]
 
+            # 前向传播
             output = model.forward(X_batch)
             batch_loss = model.compute_loss(output, y_batch)
             epoch_loss += batch_loss * X_batch.shape[0]
 
-            model.backward(X_batch, y_batch, lr)
+            # 反向传播
+            model.backward(X_batch, y_batch)
 
+        # 记录训练损失
         history['train_loss'].append(epoch_loss / X_train.shape[0])
 
+        # 验证集评估
         val_output = model.forward(X_val)
         val_loss = model.compute_loss(val_output, y_val)
         val_acc = np.mean(np.argmax(val_output, axis=1) == np.argmax(y_val, axis=1))
@@ -186,19 +224,25 @@ def plot_misclassified_samples(X, y_true, y_pred, num_samples=25):
 
 # 主程序
 if __name__ == "__main__":
-    # 数据加载
+    # 加载数据
     X_train, X_val, y_train, y_val = load_data()
 
-    # 模型初始化
-    model = NeuralNetwork(
-        input_size=784,
-        hidden_size=256,
-        output_size=10,
-        l2_lambda=1e-4
-    )
+    # 模型配置（可自由修改以下参数）
+    config = {
+        'input_size': 784,
+        'hidden_sizes': [128],  # 可改为[512,256], [128]等
+        'output_size': 10,
+        'activation': 'relu',
+        'l2_lambda': 1e-4,
+        'learning_rate': 0.01,
+        'batch_size': 64
+    }
 
-    # 模型训练
-    history = train(model, X_train, y_train, X_val, y_val, epochs=20, lr=0.01)
+    # 初始化模型
+    model = NeuralNetwork(**config)
+
+    # 训练模型
+    history = train(model, X_train, y_train, X_val, y_val, epochs=20)
 
     # 生成预测结果
     val_probs = model.forward(X_val)
