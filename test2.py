@@ -87,11 +87,12 @@ class DenseLayer:
         self.b = np.zeros((1, output_dim))
         self.activation = activation
         self.cache = None
+        self.Z = None  # 新增属性保存激活前的值
 
-    def forward(self, x, training=True):
-        self.cache = x
-        z = np.dot(x, self.W) + self.b
-        return z
+    def forward(self, x):
+        self.input = x  # 保存输入用于反向传播
+        self.Z = np.dot(x, self.W) + self.b  # 保存激活前的线性输出
+        return self.Z  # 返回未激活的Z值
 
     def backward(self, dout):
         x = self.cache
@@ -144,37 +145,48 @@ class NeuralNetwork:
             self.t = 0
 
     def forward(self, x, training=True):
+        self.activations = [x]  # 保存各层激活前的Z值
         for i, layer in enumerate(self.layers[:-1]):
-            x = layer.forward(x)
+            z = layer.forward(x)
+            # 应用激活函数
             if layer.activation == 'relu':
-                x = ReLU.forward(x)
+                a = ReLU.forward(z)
             elif layer.activation == 'sigmoid':
-                x = Sigmoid.forward(x)
+                a = Sigmoid.forward(z)
             elif layer.activation == 'tanh':
-                x = Tanh.forward(x)
+                a = Tanh.forward(z)
+            # 应用Dropout
             if training and i < len(self.dropouts):
-                x = self.dropouts[i].forward(x, training)
+                a = self.dropouts[i].forward(a, training)
+            x = a
+            self.activations.append(z)  # 保存激活前的Z值
 
-        # 输出层
-        x = self.layers[-1].forward(x)
-        return x
+        # 输出层处理
+        output = self.layers[-1].forward(x)
+        return output
 
     def backward(self, dout):
         grads = []
+        # 输出层反向传播
         dout, dW, db = self.layers[-1].backward(dout)
         grads.append({'W': dW, 'b': db})
 
+        # 反向传播隐藏层
         for i in reversed(range(len(self.layers) - 1)):
+            # 计算激活导数
+            z = self.activations[i + 1]  # 获取对应的Z值
             if self.layers[i].activation == 'relu':
-                dout *= ReLU.backward(self.layers[i].cache)
+                dout *= ReLU.backward(z)
             elif self.layers[i].activation == 'sigmoid':
-                dout *= Sigmoid.backward(self.layers[i].cache)
+                dout *= Sigmoid.backward(z)
             elif self.layers[i].activation == 'tanh':
-                dout *= Tanh.backward(self.layers[i].cache)
+                dout *= Tanh.backward(z)
 
+            # Dropout反向传播
             if i < len(self.dropouts):
                 dout = self.dropouts[i].backward(dout)
 
+            # 层反向传播
             dout, dW, db = self.layers[i].backward(dout)
             grads.insert(0, {'W': dW, 'b': db})
 
