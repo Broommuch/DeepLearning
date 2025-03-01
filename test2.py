@@ -27,10 +27,12 @@ def load_data():
 # 神经网络类
 class NeuralNetwork:
     def __init__(self, input_size, hidden_sizes, output_size,
-                 activation='relu', l2_lambda=1e-4,
-                 learning_rate=0.01, batch_size=64):
+                 activation='relu', alpha=0.01,
+                 l2_lambda=1e-4, learning_rate=0.01, batch_size=64):
         # 网络参数
         self.layer_dims = [input_size] + hidden_sizes + [output_size]
+        self.activation = activation.lower()
+        self.alpha = alpha
         self.l2_lambda = l2_lambda
         self.learning_rate = learning_rate
         self.batch_size = batch_size
@@ -39,19 +41,42 @@ class NeuralNetwork:
         self.weights = []
         self.biases = []
         for i in range(len(self.layer_dims) - 1):
-            # He初始化
-            scale = np.sqrt(2.0 / self.layer_dims[i])
+            if self.activation in ['relu', 'leaky_relu']:
+                scale = np.sqrt(2.0 / self.layer_dims[i])
+            else:
+                scale = np.sqrt(1.0 / self.layer_dims[i])
+
             self.weights.append(np.random.randn(self.layer_dims[i], self.layer_dims[i + 1]) * scale)
             self.biases.append(np.zeros((1, self.layer_dims[i + 1])))
 
-        # 缓存中间结果
         self.caches = []
 
-    def relu(self, Z):
-        return np.maximum(0, Z)
+    # 激活函数
+    def _activate(self, Z):
+        if self.activation == 'relu':
+            return np.maximum(0, Z)
+        elif self.activation == 'sigmoid':
+            return 1 / (1 + np.exp(-Z))
+        elif self.activation == 'tanh':
+            return np.tanh(Z)
+        elif self.activation == 'leaky_relu':
+            return np.where(Z > 0, Z, self.alpha * Z)
+        else:
+            raise ValueError(f"Unsupported activation: {self.activation}")
 
-    def relu_deriv(self, Z):
-        return Z > 0
+    # 导数函数
+    def _activate_deriv(self, Z):
+        if self.activation == 'relu':
+            return (Z > 0).astype(float)
+        elif self.activation == 'sigmoid':
+            s = 1 / (1 + np.exp(-Z))
+            return s * (1 - s)
+        elif self.activation == 'tanh':
+            return 1 - np.tanh(Z) ** 2
+        elif self.activation == 'leaky_relu':
+            return np.where(Z > 0, 1, self.alpha)
+        else:
+            raise ValueError(f"Unsupported activation: {self.activation}")
 
     def softmax(self, Z):
         exps = np.exp(Z - np.max(Z, axis=1, keepdims=True))
@@ -61,13 +86,11 @@ class NeuralNetwork:
         self.caches = []
         A = X
 
-        # 前向传播所有隐藏层
         for i in range(len(self.weights) - 1):
             Z = np.dot(A, self.weights[i]) + self.biases[i]
             self.caches.append((A.copy(), Z.copy()))
-            A = self.relu(Z)
+            A = self._activate(Z)
 
-        # 输出层前保存最后的激活输出
         Z = np.dot(A, self.weights[-1]) + self.biases[-1]
         self.caches.append((A.copy(), Z.copy()))
         return self.softmax(Z)
@@ -77,37 +100,27 @@ class NeuralNetwork:
         corect_logprobs = -np.log(y_pred[range(m), y_true.argmax(axis=1)])
         data_loss = np.sum(corect_logprobs) / m
 
-        # L2正则化项
-        reg_loss = 0
-        for W in self.weights:
-            reg_loss += 0.5 * self.l2_lambda * np.sum(W ** 2)
-
+        reg_loss = 0.5 * self.l2_lambda * sum(np.sum(W ** 2) for W in self.weights)
         return data_loss + reg_loss
 
     def backward(self, X, y):
         m = X.shape[0]
         grads = []
 
-        # 输出层梯度
-        dZ = self.forward(X) - y  # 确保使用最新缓存
+        dZ = self.forward(X) - y
 
-        # 反向传播所有层
         for i in reversed(range(len(self.weights))):
-            # 获取正确的A_prev
             A_prev, _ = self.caches[i]
 
-            # 计算梯度
             dW = np.dot(A_prev.T, dZ) / m + self.l2_lambda * self.weights[i]
             db = np.sum(dZ, axis=0, keepdims=True) / m
             grads.insert(0, (dW, db))
 
-            # 计算前一层梯度（除输入层外）
             if i > 0:
                 dA_prev = np.dot(dZ, self.weights[i].T)
                 _, Z_prev = self.caches[i - 1]
-                dZ = dA_prev * self.relu_deriv(Z_prev)
+                dZ = dA_prev * self._activate_deriv(Z_prev)
 
-        # 更新参数
         for i in range(len(self.weights)):
             self.weights[i] -= self.learning_rate * grads[i][0]
             self.biases[i] -= self.learning_rate * grads[i][1]
@@ -118,79 +131,87 @@ def train(model, X_train, y_train, X_val, y_val, epochs=20):
     history = {
         'train_loss': [],
         'val_loss': [],
+        'train_acc': [],  # 新增训练准确率记录
         'val_acc': []
     }
 
     for epoch in range(epochs):
         epoch_loss = 0
 
-        # Mini-batch训练
+        # 训练阶段
         permutation = np.random.permutation(X_train.shape[0])
         for i in range(0, X_train.shape[0], model.batch_size):
-            indices = permutation[i:i + model.batch_size]
+            batch_end = min(i + model.batch_size, X_train.shape[0])
+            indices = permutation[i:batch_end]
             X_batch = X_train[indices]
             y_batch = y_train[indices]
 
-            # 前向传播
             output = model.forward(X_batch)
             batch_loss = model.compute_loss(output, y_batch)
             epoch_loss += batch_loss * X_batch.shape[0]
 
-            # 反向传播
             model.backward(X_batch, y_batch)
 
-        # 记录训练损失
-        history['train_loss'].append(epoch_loss / X_train.shape[0])
+        # 计算训练集准确率
+        train_output = model.forward(X_train)
+        train_acc = np.mean(np.argmax(train_output, axis=1) == np.argmax(y_train, axis=1))
 
         # 验证集评估
         val_output = model.forward(X_val)
-        val_loss = model.compute_loss(val_output, y_val)
         val_acc = np.mean(np.argmax(val_output, axis=1) == np.argmax(y_val, axis=1))
-        history['val_loss'].append(val_loss)
+
+        # 记录指标
+        history['train_loss'].append(epoch_loss / X_train.shape[0])
+        history['val_loss'].append(model.compute_loss(val_output, y_val))
+        history['train_acc'].append(train_acc)
         history['val_acc'].append(val_acc)
 
         print(f"Epoch {epoch + 1}/{epochs} | "
               f"Train Loss: {history['train_loss'][-1]:.4f} | "
-              f"Val Loss: {val_loss:.4f} | "
+              f"Val Loss: {history['val_loss'][-1]:.4f} | "
+              f"Train Acc: {train_acc:.4f} | "
               f"Val Acc: {val_acc:.4f}")
 
     return history
 
 
-# 可视化函数
-def plot_training_curves(history):
+# 可视化函数（更新版）
+def visualize_results(history, y_true, y_pred, X_val):
+    # 训练曲线（损失）
     plt.figure(figsize=(10, 5))
-    plt.subplot(1, 2, 1)
     plt.plot(history['train_loss'], label='Train Loss')
     plt.plot(history['val_loss'], label='Val Loss')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.legend()
     plt.grid(True)
+    plt.title("Training and Validation Loss")
+    plt.savefig('loss_curves.png')
+    plt.show()
+    plt.close()
 
-    plt.subplot(1, 2, 2)
-    plt.plot(history['val_acc'], 'g-', label='Validation Accuracy')
+    # 准确率曲线（新增）
+    plt.figure(figsize=(10, 5))
+    plt.plot(history['train_acc'], label='Train Accuracy')
+    plt.plot(history['val_acc'], label='Validation Accuracy')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
     plt.legend()
     plt.grid(True)
-
-    plt.tight_layout()
-    plt.savefig('training_curves.png')
+    plt.title("Training and Validation Accuracy")
+    plt.savefig('accuracy_curves.png')
     plt.show()
+    plt.close()
 
-
-def plot_confusion_matrix(y_true, y_pred):
+    # 混淆矩阵
+    plt.figure(figsize=(10, 8))
     cm = confusion_matrix(y_true, y_pred)
-
-    plt.figure(figsize=(12, 10))
-    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
-    plt.title('Confusion Matrix')
+    plt.imshow(cm, cmap='Blues')
     plt.colorbar()
-
-    tick_marks = np.arange(10)
-    plt.xticks(tick_marks, range(10))
-    plt.yticks(tick_marks, range(10))
+    plt.xticks(range(10))
+    plt.yticks(range(10))
+    plt.xlabel('Predicted Label')
+    plt.ylabel('True Label')
 
     thresh = cm.max() / 2.
     for i in range(10):
@@ -199,55 +220,43 @@ def plot_confusion_matrix(y_true, y_pred):
                      ha="center", va="center",
                      color="white" if cm[i, j] > thresh else "black")
 
-    plt.xlabel('Predicted Label')
-    plt.ylabel('True Label')
+    plt.title("Confusion Matrix")
     plt.savefig('confusion_matrix.png')
     plt.show()
+    plt.close()
 
-
-def plot_misclassified_samples(X, y_true, y_pred, num_samples=25):
-    misclassified = np.where(y_pred != y_true)[0]
-    np.random.shuffle(misclassified)
-    selected = misclassified[:num_samples]
-
+    # 错误样本
     plt.figure(figsize=(12, 12))
-    for i, idx in enumerate(selected):
+    wrong = np.where(y_pred != y_true)[0][:25]
+    for i, idx in enumerate(wrong):
         plt.subplot(5, 5, i + 1)
-        plt.imshow(X[idx].reshape(28, 28), cmap='gray')
-        plt.title(f"True: {y_true[idx]}\nPred: {y_pred[idx]}", fontsize=8)
+        plt.imshow(X_val[idx].reshape(28, 28), cmap='gray')
+        plt.title(f"T:{y_true[idx]}\nP:{y_pred[idx]}", fontsize=8)
         plt.axis('off')
+    plt.suptitle("Misclassified Samples")
     plt.tight_layout()
     plt.savefig('misclassified_samples.png')
     plt.show()
+    plt.close()
 
 
 # 主程序
 if __name__ == "__main__":
-    # 加载数据
     X_train, X_val, y_train, y_val = load_data()
 
-    # 模型配置示例（可自由修改）
-    config = {
-        'input_size': 784,
-        'hidden_sizes': [256, 128],  # 支持任意结构如[512, 256], [128]等
-        'output_size': 10,
-        'l2_lambda': 1e-4,
-        'learning_rate': 0.01,
-        'batch_size': 64
-    }
+    model = NeuralNetwork(
+        input_size=784,
+        hidden_sizes=[256, 128],
+        output_size=10,
+        activation='relu',
+        alpha=0.01,
+        learning_rate=0.01,
+        batch_size=64,
+        l2_lambda=1e-4
+    )
 
-    # 初始化模型
-    model = NeuralNetwork(**config)
-
-    # 训练模型
     history = train(model, X_train, y_train, X_val, y_val, epochs=20)
-
-    # 生成预测结果
-    val_probs = model.forward(X_val)
-    y_pred = np.argmax(val_probs, axis=1)
+    y_pred = np.argmax(model.forward(X_val), axis=1)
     y_true = np.argmax(y_val, axis=1)
 
-    # 可视化结果
-    plot_training_curves(history)
-    plot_confusion_matrix(y_true, y_pred)
-    plot_misclassified_samples(X_val, y_true, y_pred)
+    visualize_results(history, y_true, y_pred, X_val)
