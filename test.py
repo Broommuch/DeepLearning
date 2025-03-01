@@ -2,7 +2,6 @@ import numpy as np
 from sklearn.datasets import fetch_openml
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
-from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 
 
@@ -24,7 +23,6 @@ def load_data():
     return X_train, X_val, y_train, y_val
 
 
-# 神经网络类
 class NeuralNetwork:
     def __init__(self, input_size, hidden_size, output_size,
                  activation='relu', l2_lambda=1e-4):
@@ -36,11 +34,25 @@ class NeuralNetwork:
         self.activation = activation
         self.l2_lambda = l2_lambda
 
-    def relu(self, Z):
-        return np.maximum(0, Z)
+    # 激活函数全家桶
+    def _activation(self, Z, type):
+        if type == 'relu':
+            return np.maximum(0, Z)
+        elif type == 'sigmoid':
+            return 1 / (1 + np.exp(-Z))
+        elif type == 'tanh':
+            return np.tanh(Z)
+        return Z
 
-    def relu_deriv(self, Z):
-        return Z > 0
+    def _activation_deriv(self, Z, type):
+        if type == 'relu':
+            return (Z > 0).astype(float)
+        elif type == 'sigmoid':
+            s = self._activation(Z, 'sigmoid')
+            return s * (1 - s)
+        elif type == 'tanh':
+            return 1 - np.tanh(Z) ** 2
+        return np.ones_like(Z)
 
     def softmax(self, Z):
         exps = np.exp(Z - np.max(Z, axis=1, keepdims=True))
@@ -49,7 +61,7 @@ class NeuralNetwork:
     def forward(self, X):
         # 第一层
         self.Z1 = np.dot(X, self.W1) + self.b1
-        self.A1 = self.relu(self.Z1)
+        self.A1 = self._activation(self.Z1, self.activation)
 
         # 输出层
         self.Z2 = np.dot(self.A1, self.W2) + self.b2
@@ -62,7 +74,7 @@ class NeuralNetwork:
         reg_loss = 0.5 * self.l2_lambda * (np.sum(self.W1 ** 2) + np.sum(self.W2 ** 2))
         return data_loss + reg_loss
 
-    def backward(self, X, y, learning_rate):
+    def backward(self, X, y, lr):
         m = X.shape[0]
 
         # 输出层梯度
@@ -72,18 +84,18 @@ class NeuralNetwork:
 
         # 隐藏层梯度
         dA1 = np.dot(dZ2, self.W2.T)
-        dZ1 = dA1 * self.relu_deriv(self.Z1)
+        dZ1 = dA1 * self._activation_deriv(self.Z1, self.activation)
         dW1 = np.dot(X.T, dZ1) / m + self.l2_lambda * self.W1
         db1 = np.sum(dZ1, axis=0, keepdims=True) / m
 
         # 参数更新
-        self.W1 -= learning_rate * dW1
-        self.b1 -= learning_rate * db1
-        self.W2 -= learning_rate * dW2
-        self.b2 -= learning_rate * db2
+        self.W1 -= lr * dW1
+        self.b1 -= lr * db1
+        self.W2 -= lr * dW2
+        self.b2 -= lr * db2
 
 
-# 训练函数
+# 修改后的训练函数（添加历史记录）
 def train(model, X_train, y_train, X_val, y_val, epochs=20, lr=0.01, batch_size=64):
     history = {
         'train_loss': [],
@@ -92,29 +104,30 @@ def train(model, X_train, y_train, X_val, y_val, epochs=20, lr=0.01, batch_size=
     }
 
     for epoch in range(epochs):
-        # Mini-batch训练
-        epoch_loss = 0
+        # 训练阶段
+        epoch_train_loss = 0
         permutation = np.random.permutation(X_train.shape[0])
         for i in range(0, X_train.shape[0], batch_size):
             indices = permutation[i:i + batch_size]
             X_batch = X_train[indices]
             y_batch = y_train[indices]
 
-            # 前向传播
+            # 前向传播并计算损失
             output = model.forward(X_batch)
             batch_loss = model.compute_loss(output, y_batch)
-            epoch_loss += batch_loss * X_batch.shape[0]
+            epoch_train_loss += batch_loss * X_batch.shape[0]
 
             # 反向传播
             model.backward(X_batch, y_batch, lr)
 
         # 记录训练损失
-        history['train_loss'].append(epoch_loss / X_train.shape[0])
+        history['train_loss'].append(epoch_train_loss / X_train.shape[0])
 
-        # 验证集评估
+        # 验证阶段
         val_output = model.forward(X_val)
         val_loss = model.compute_loss(val_output, y_val)
         val_acc = np.mean(np.argmax(val_output, axis=1) == np.argmax(y_val, axis=1))
+
         history['val_loss'].append(val_loss)
         history['val_acc'].append(val_acc)
 
@@ -126,65 +139,46 @@ def train(model, X_train, y_train, X_val, y_val, epochs=20, lr=0.01, batch_size=
     return history
 
 
-# 可视化函数
-def visualize_results(history, y_true, y_pred, X_val, num_samples=25):
-    plt.figure(figsize=(18, 6))
+def visualize_history(history):
+    plt.figure(figsize=(12, 5))
 
-    # 训练曲线
-    plt.subplot(1, 3, 1)
+    # 损失函数变化趋势
+    plt.subplot(1, 2, 1)
     plt.plot(history['train_loss'], label='Train Loss')
     plt.plot(history['val_loss'], label='Val Loss')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
-    plt.title('Training Process')
+    plt.title('Training and Validation Loss')
     plt.legend()
     plt.grid(True)
 
-    # 混淆矩阵
-    plt.subplot(1, 3, 2)
-    cm = confusion_matrix(y_true, y_pred)
-    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
-    plt.title('Confusion Matrix')
-    plt.colorbar()
-    tick_marks = np.arange(10)
-    plt.xticks(tick_marks, range(10))
-    plt.yticks(tick_marks, range(10))
-
-    # 错误分类样本
-    plt.subplot(1, 3, 3)
-    misclassified = np.where(y_pred != y_true)[0]
-    np.random.shuffle(misclassified)
-    for i, idx in enumerate(misclassified[:num_samples]):
-        plt.subplot(5, 5, i + 1)
-        plt.imshow(X_val[idx].reshape(28, 28), cmap='gray')
-        plt.title(f"T:{y_true[idx]}\nP:{y_pred[idx]}", fontsize=8)
-        plt.axis('off')
+    # 准确率变化趋势
+    plt.subplot(1, 2, 2)
+    plt.plot(history['val_acc'], 'g-', label='Validation Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.title('Validation Accuracy Progress')
+    plt.legend()
+    plt.grid(True)
 
     plt.tight_layout()
-    plt.savefig('results.png')
+    plt.savefig('training_metrics.png')
     plt.show()
 
 
-# 主程序
+# 修改后的主程序
 if __name__ == "__main__":
-    # 加载数据
     X_train, X_val, y_train, y_val = load_data()
 
-    # 创建模型
     model = NeuralNetwork(
         input_size=784,
         hidden_size=256,
         output_size=10,
-        l2_lambda=1e-4
+        activation='relu'
     )
 
-    # 训练模型
-    history = train(model, X_train, y_train, X_val, y_val, epochs=20, lr=0.01)
+    # 训练并获取历史数据
+    history = train(model, X_train, y_train, X_val, y_val)
 
-    # 生成预测结果
-    val_probs = model.forward(X_val)
-    y_pred = np.argmax(val_probs, axis=1)
-    y_true = np.argmax(y_val, axis=1)
-
-    # 可视化结果
-    visualize_results(history, y_true, y_pred, X_val)
+    # 可视化训练过程
+    visualize_history(history)
