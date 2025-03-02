@@ -12,7 +12,7 @@ if __name__ == "__main__":
         input_size=784,
         hidden_sizes=[256, 128],
         output_size=10,
-        activation='relu',
+        activation='relu',  # relu/sigmoid/tanh/leaky_relu
         alpha=0.01,
         learning_rate=0.01,
         batch_size=64,
