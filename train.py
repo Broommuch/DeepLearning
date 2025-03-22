@@ -8,6 +8,7 @@ import numpy as np
 import os, time, random
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import torch.multiprocessing as mp
 
 from torch.utils.data import DataLoader
 from dataloader import TinySegData
@@ -193,6 +194,7 @@ def validate(model, val_loader, criterion, device, class_num=6):
 
 
 def main():
+    mp.set_start_method('spawn', force=True)  # 添加在 main() 开头
     args = get_args()
     set_seed(args.seed)
 
