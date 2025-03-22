@@ -6,9 +6,19 @@
 git init
 ```
 
-## 然后创建本地分支并关联到远程仓库分支
+## 然后创建本地分支并关联到远程已有仓库分支
 
+**如果本地分支名与远程分支名相同**（例如远程分支 `dev`，本地也命名 `dev`）：
 
+```bash
+git switch -c dev origin/dev
+```
+
+**如果本地分支名与远程分支名不同**（例如远程分支 `feature/login`，本地命名为 `login`）：
+
+```bash
+git switch -c login origin/feature/login
+```
 
 
 
